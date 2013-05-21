@@ -12,20 +12,28 @@ namespace SimpleProxy
   /// <summary>
   /// The Proxy interface.
   /// </summary>
-  /// <typeparam name="TMetaData">
-  /// The type for meta data.
+  /// <typeparam name="TClassMetaData">
+  /// The type for class meta data.
   /// </typeparam>
-  public interface IProxy<TMetaData>
+  /// <typeparam name="TPropertyMetaData">
+  /// The type for property meta data.
+  /// </typeparam>
+  public interface IProxy<TClassMetaData, TPropertyMetaData>
   {
     /// <summary>
     /// Gets the meta data gets.
     /// </summary>
-    TMetaData[] MetaDataGets { get; }
+    TPropertyMetaData[] MetaDataGets { get; }
 
     /// <summary>
     /// Gets the meta data sets.
     /// </summary>
-    TMetaData[] MetaDataSets { get; }
+    TPropertyMetaData[] MetaDataSets { get; }
+
+    /// <summary>
+    /// Gets the class meta data.
+    /// </summary>
+    TClassMetaData ClassMetaData { get; }
 
     /// <summary>
     /// The get values.

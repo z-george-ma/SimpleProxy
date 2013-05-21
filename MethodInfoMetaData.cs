@@ -14,10 +14,10 @@ namespace SimpleProxy
   /// <summary>
   /// The method info meta data.
   /// </summary>
-  /// <typeparam name="TMetaData">
+  /// <typeparam name="TPropertyMetaData">
   /// The type for meta data.
   /// </typeparam>
-  public struct MethodInfoMetaData<TMetaData>
+  public struct MethodInfoMetaData<TPropertyMetaData>
   {
     /// <summary>
     /// The method info.
@@ -27,6 +27,6 @@ namespace SimpleProxy
     /// <summary>
     /// The meta data.
     /// </summary>
-    public TMetaData MetaData;
+    public TPropertyMetaData MetaData;
   }
 }

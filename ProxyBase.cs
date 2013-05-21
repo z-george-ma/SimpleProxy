@@ -12,22 +12,29 @@ namespace SimpleProxy
   /// <summary>
   /// The proxy base.
   /// </summary>
-  /// <typeparam name="TMetaData">
-  /// The type for meta data.
+  /// <typeparam name="TClassMetaData">
+  /// The type for class meta data.
   /// </typeparam>
-  public abstract class ProxyBase<TMetaData> : IProxy<TMetaData>
+  /// <typeparam name="TPropertyMetaData">
+  /// The type for property meta data.
+  /// </typeparam>
+  public abstract class ProxyBase<TClassMetaData, TPropertyMetaData> : IProxy<TClassMetaData, TPropertyMetaData>
   {
     /// <summary>
-    /// Initializes a new instance of the <see cref="ProxyBase{TMetaData}"/> class.
+    /// Initializes a new instance of the <see cref="ProxyBase{TClassMetaData, TPropertyMetaData}"/> class.
     /// </summary>
+    /// <param name="classMetaData">
+    /// The class meta data.
+    /// </param>
     /// <param name="metaDataGets">
     /// The meta data gets.
     /// </param>
     /// <param name="metaDataSets">
     /// The meta data sets.
     /// </param>
-    protected ProxyBase(TMetaData[] metaDataGets, TMetaData[] metaDataSets)
+    protected ProxyBase(TClassMetaData classMetaData, TPropertyMetaData[] metaDataGets, TPropertyMetaData[] metaDataSets)
     {
+      this.ClassMetaData = classMetaData;
       this.MetaDataGets = metaDataGets;
       this.MetaDataSets = metaDataSets;
     }
@@ -35,12 +42,17 @@ namespace SimpleProxy
     /// <summary>
     /// Gets the meta data gets.
     /// </summary>
-    public TMetaData[] MetaDataGets { get; private set; }
+    public TPropertyMetaData[] MetaDataGets { get; private set; }
 
     /// <summary>
     /// Gets the meta data sets.
     /// </summary>
-    public TMetaData[] MetaDataSets { get; private set; }
+    public TPropertyMetaData[] MetaDataSets { get; private set; }
+
+    /// <summary>
+    /// Gets the class meta data.
+    /// </summary>
+    public TClassMetaData ClassMetaData { get; private set; }
 
     /// <summary>
     /// The set values.

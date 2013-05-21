@@ -18,20 +18,23 @@ namespace SimpleProxy
   /// <summary>
   /// The proxy factory.
   /// </summary>
-  /// <typeparam name="TMetaData">
+  /// <typeparam name="TClassMetaData">
+  /// The type for class meta data.
+  /// </typeparam>
+  /// <typeparam name="TPropertyMetaData">
   /// Type for meta data.
   /// </typeparam>
-  public class ProxyFactory<TMetaData>
+  public class ProxyFactory<TClassMetaData, TPropertyMetaData>
   {
     /// <summary>
     /// The class analyzer.
     /// </summary>
-    private readonly IClassAnalyzer<TMetaData> _classAnalyzer;
+    private readonly IClassAnalyzer<TClassMetaData, TPropertyMetaData> _classAnalyzer;
 
     /// <summary>
     /// The proxy cache.
     /// </summary>
-    private readonly Dictionary<Type, IProxy<TMetaData>> _proxyCache = new Dictionary<Type, IProxy<TMetaData>>();
+    private readonly Dictionary<Type, IProxy<TClassMetaData, TPropertyMetaData>> _proxyCache = new Dictionary<Type, IProxy<TClassMetaData, TPropertyMetaData>>();
 
     /// <summary>
     /// The type lock.
@@ -64,17 +67,17 @@ namespace SimpleProxy
     private volatile ModuleBuilder _moduleBuilder;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="ProxyFactory{TMetaData}"/> class.
+    /// Initializes a new instance of the <see cref="ProxyFactory{TClassMetaData, TPropertyMetaData}"/> class.
     /// </summary>
     /// <param name="classAnalyzer">
     /// The class analyzer.
     /// </param>
-    public ProxyFactory(IClassAnalyzer<TMetaData> classAnalyzer)
+    public ProxyFactory(IClassAnalyzer<TClassMetaData, TPropertyMetaData> classAnalyzer)
     {
       this._classAnalyzer = classAnalyzer;
-      this._baseType = typeof(ProxyBase<TMetaData>);
+      this._baseType = typeof(ProxyBase<TClassMetaData, TPropertyMetaData>);
       this._baseCtor = this._baseType.GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)[0];
-      this._metaDataClassName = typeof(TMetaData).Name;
+      this._metaDataClassName = typeof(TPropertyMetaData).Name;
     }
 
     /// <summary>
@@ -91,7 +94,7 @@ namespace SimpleProxy
             if (this._moduleBuilder == null)
             {
               var assemblyBuilder = AppDomain.CurrentDomain.DefineDynamicAssembly(
-                new AssemblyName("SimpleProxy"), AssemblyBuilderAccess.Run);
+                new AssemblyName("SimpleProxy.Dynamic"), AssemblyBuilderAccess.Run);
 
               string assemblyName = assemblyBuilder.GetName().Name;
 
@@ -105,20 +108,20 @@ namespace SimpleProxy
     }
 
     /// <summary>
-    /// The get proxy.
+    /// Create or get the proxy.
     /// </summary>
     /// <typeparam name="T">
-    /// The type for meta data.
+    /// The type used to generate the proxy.
     /// </typeparam>
     /// <returns>
-    /// The <see cref="IProxy"/>.
+    /// The <see cref="IProxy{TClassMetaData, TPropertyMetaData}"/>.
     /// </returns>
-    public IProxy<TMetaData> GetProxy<T>()
+    public IProxy<TClassMetaData, TPropertyMetaData> GetProxy<T>()
       where T : class
     {
       var type = typeof(T);
-      var typeCtor = type.GetConstructor(new Type[0]);
-      IProxy<TMetaData> value = null;
+
+      IProxy<TClassMetaData, TPropertyMetaData> value = null;
 
       if (!this._proxyCache.ContainsKey(type))
       {
@@ -132,103 +135,29 @@ namespace SimpleProxy
                 TypeAttributes.Class | TypeAttributes.Public,
                 this._baseType);
 
-            ConstructorBuilder ctorBuilder = typeBuilder.DefineConstructor(
-              MethodAttributes.Public,
-              CallingConventions.HasThis,
-              new[] { typeof(TMetaData[]), typeof(TMetaData[]) });
+            this.GenerateConstructor(typeBuilder);
 
-            ILGenerator cIl = ctorBuilder.GetILGenerator();
+            TClassMetaData classMetaData;
+            MethodInfoMetaData<TPropertyMetaData>[] metaDataGets, metaDataSets;
 
-            cIl.Emit(OpCodes.Ldarg_0);
-            cIl.Emit(OpCodes.Ldarg_1);
-            cIl.Emit(OpCodes.Ldarg_2);
-            cIl.Emit(OpCodes.Call, this._baseCtor);
-            cIl.Emit(OpCodes.Ret);
+            this._classAnalyzer.ProcessType(type, out classMetaData, out metaDataGets, out metaDataSets);
 
-            MethodInfoMetaData<TMetaData>[] metaDataGets, metaDataSets;
+            this.GenerateGetValuesMethod(typeBuilder, metaDataGets);
 
-            this._classAnalyzer.ProcessType(type, out metaDataGets, out metaDataSets);
+            this.GenerateSetValuesMethod(typeBuilder, metaDataSets);
 
-            MethodBuilder getValuesBuilder = typeBuilder.DefineMethod(
-              "GetValues",
-              MethodAttributes.Public | MethodAttributes.Virtual,
-              typeof(object[]),
-              new[] { typeof(object) });
-
-            ILGenerator gIl = getValuesBuilder.GetILGenerator();
-
-            LocalBuilder array = gIl.DeclareLocal(typeof(object[]));
-            gIl.Emit(OpCodes.Ldc_I4, metaDataGets.Length);
-            gIl.Emit(OpCodes.Newarr, typeof(object));
-            gIl.Emit(OpCodes.Stloc, array);
-
-            var i = 0;
-
-            foreach (var metaDataGet in metaDataGets)
-            {
-              var method = metaDataGet.MethodInfo;
-              gIl.Emit(OpCodes.Ldloc, array);
-              gIl.Emit(OpCodes.Ldc_I4, i++);
-              gIl.Emit(OpCodes.Ldarg_1);
-              gIl.Emit(OpCodes.Call, method);
-
-              if (method.ReturnType.IsPrimitive || method.ReturnType.IsValueType)
-              {
-                gIl.Emit(OpCodes.Box, method.ReturnType);
-              }
-
-              gIl.Emit(OpCodes.Stelem_Ref);
-            }
-
-            gIl.Emit(OpCodes.Ldloc, array);
-
-            gIl.Emit(OpCodes.Ret);
-
-            MethodBuilder setValuesBuilder = typeBuilder.DefineMethod(
-              "SetValues",
-              MethodAttributes.Public | MethodAttributes.Virtual,
-              typeof(void),
-              new[] { typeof(object), typeof(object[]) });
-
-            ILGenerator sIl = setValuesBuilder.GetILGenerator();
-
-            i = 0;
-
-            foreach (var metaDataSet in metaDataSets)
-            {
-              var method = metaDataSet.MethodInfo;
-              var parameterType = method.GetParameters()[0].ParameterType;
-
-              sIl.Emit(OpCodes.Ldarg_1);
-
-              sIl.Emit(OpCodes.Ldarg_2);
-              sIl.Emit(OpCodes.Ldc_I4, i++);
-
-              sIl.Emit(OpCodes.Ldelem_Ref);
-
-              if (parameterType.IsPrimitive || parameterType.IsValueType)
-              {
-                sIl.Emit(OpCodes.Unbox_Any, parameterType);
-              }
-
-              sIl.Emit(OpCodes.Call, method);
-            }
-
-            sIl.Emit(OpCodes.Ret);
-
-            MethodBuilder createObjectBuilder = typeBuilder.DefineMethod(
-              "CreateObject",
-              MethodAttributes.Public | MethodAttributes.Virtual,
-              typeof(object),
-              null);
-
-            ILGenerator coIl = createObjectBuilder.GetILGenerator();
-            coIl.Emit(OpCodes.Newobj, typeCtor);
-            coIl.Emit(OpCodes.Ret);
+            this.GenerateCreateObjectMethod(typeBuilder, type);
 
             var proxyType = typeBuilder.CreateType();
 
-            value = this._proxyCache[type] = (IProxy<TMetaData>)Activator.CreateInstance(proxyType, metaDataGets.Select(x => x.MetaData).ToArray(), metaDataSets.Select(x => x.MetaData).ToArray());
+            value =
+              this._proxyCache[type] =
+              (IProxy<TClassMetaData, TPropertyMetaData>)
+              Activator.CreateInstance(
+                proxyType,
+                classMetaData,
+                metaDataGets.Select(x => x.MetaData).ToArray(),
+                metaDataSets.Select(x => x.MetaData).ToArray());
           }
           else
           {
@@ -242,6 +171,144 @@ namespace SimpleProxy
       }
 
       return value;
+    }
+
+    /// <summary>
+    /// The generate constructor.
+    /// </summary>
+    /// <param name="typeBuilder">
+    /// The type builder.
+    /// </param>
+    private void GenerateConstructor(TypeBuilder typeBuilder)
+    {
+      ConstructorBuilder ctorBuilder = typeBuilder.DefineConstructor(
+        MethodAttributes.Public,
+        CallingConventions.HasThis,
+        new[] { typeof(TClassMetaData), typeof(TPropertyMetaData[]), typeof(TPropertyMetaData[]) });
+
+      ILGenerator cIl = ctorBuilder.GetILGenerator();
+
+      cIl.Emit(OpCodes.Ldarg_0);
+      cIl.Emit(OpCodes.Ldarg_1);
+      cIl.Emit(OpCodes.Ldarg_2);
+      cIl.Emit(OpCodes.Ldarg_3);
+      cIl.Emit(OpCodes.Call, this._baseCtor);
+      cIl.Emit(OpCodes.Ret);      
+    }
+
+    /// <summary>
+    /// The generate get values method.
+    /// </summary>
+    /// <param name="typeBuilder">
+    /// The type builder.
+    /// </param>
+    /// <param name="metaDataGets">
+    /// The meta data gets.
+    /// </param>
+    private void GenerateGetValuesMethod(TypeBuilder typeBuilder, MethodInfoMetaData<TPropertyMetaData>[] metaDataGets)
+    {
+      MethodBuilder getValuesBuilder = typeBuilder.DefineMethod(
+                    "GetValues",
+                    MethodAttributes.Public | MethodAttributes.Virtual,
+                    typeof(object[]),
+                    new[] { typeof(object) });
+
+      ILGenerator gIl = getValuesBuilder.GetILGenerator();
+
+      LocalBuilder array = gIl.DeclareLocal(typeof(object[]));
+      gIl.Emit(OpCodes.Ldc_I4, metaDataGets.Length);
+      gIl.Emit(OpCodes.Newarr, typeof(object));
+      gIl.Emit(OpCodes.Stloc, array);
+
+      var i = 0;
+
+      foreach (var metaDataGet in metaDataGets)
+      {
+        var method = metaDataGet.MethodInfo;
+        gIl.Emit(OpCodes.Ldloc, array);
+        gIl.Emit(OpCodes.Ldc_I4, i++);
+        gIl.Emit(OpCodes.Ldarg_1);
+        gIl.Emit(OpCodes.Call, method);
+
+        if (method.ReturnType.IsPrimitive || method.ReturnType.IsValueType)
+        {
+          gIl.Emit(OpCodes.Box, method.ReturnType);
+        }
+
+        gIl.Emit(OpCodes.Stelem_Ref);
+      }
+
+      gIl.Emit(OpCodes.Ldloc, array);
+
+      gIl.Emit(OpCodes.Ret);
+    }
+
+    /// <summary>
+    /// The generate set values method.
+    /// </summary>
+    /// <param name="typeBuilder">
+    /// The type builder.
+    /// </param>
+    /// <param name="metaDataSets">
+    /// The meta data sets.
+    /// </param>
+    private void GenerateSetValuesMethod(TypeBuilder typeBuilder, MethodInfoMetaData<TPropertyMetaData>[] metaDataSets)
+    {
+      MethodBuilder setValuesBuilder = typeBuilder.DefineMethod(
+        "SetValues",
+        MethodAttributes.Public | MethodAttributes.Virtual,
+        typeof(void),
+        new[] { typeof(object), typeof(object[]) });
+
+      ILGenerator sIl = setValuesBuilder.GetILGenerator();
+
+      var i = 0;
+
+      foreach (var metaDataSet in metaDataSets)
+      {
+        var method = metaDataSet.MethodInfo;
+        var parameterType = method.GetParameters()[0].ParameterType;
+
+        sIl.Emit(OpCodes.Ldarg_1);
+
+        sIl.Emit(OpCodes.Ldarg_2);
+        sIl.Emit(OpCodes.Ldc_I4, i++);
+
+        sIl.Emit(OpCodes.Ldelem_Ref);
+
+        if (parameterType.IsPrimitive || parameterType.IsValueType)
+        {
+          sIl.Emit(OpCodes.Unbox_Any, parameterType);
+        }
+
+        sIl.Emit(OpCodes.Call, method);
+      }
+
+      sIl.Emit(OpCodes.Ret);
+    }
+
+    /// <summary>
+    /// The generate create object method.
+    /// </summary>
+    /// <param name="typeBuilder">
+    /// The type builder.
+    /// </param>
+    /// <param name="type">
+    /// The object type.
+    /// </param>
+    private void GenerateCreateObjectMethod(TypeBuilder typeBuilder, Type type)
+    {
+      var typeCtor = type.GetConstructor(new Type[0]);
+
+      MethodBuilder createObjectBuilder = typeBuilder.DefineMethod(
+        "CreateObject",
+        MethodAttributes.Public | MethodAttributes.Virtual,
+        typeof(object),
+        null);
+
+      ILGenerator coIl = createObjectBuilder.GetILGenerator();
+      coIl.Emit(OpCodes.Newobj, typeCtor);
+      coIl.Emit(OpCodes.Ret);
     }
   }
 }
