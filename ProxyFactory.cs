@@ -24,7 +24,7 @@ namespace SimpleProxy
   /// <typeparam name="TPropertyMetaData">
   /// Type for meta data.
   /// </typeparam>
-  public class ProxyFactory<TClassMetaData, TPropertyMetaData>
+  public class ProxyFactory<TClassMetaData, TPropertyMetaData> : IProxyFactory<TClassMetaData, TPropertyMetaData>
   {
     /// <summary>
     /// The class analyzer.
@@ -110,17 +110,14 @@ namespace SimpleProxy
     /// <summary>
     /// Create or get the proxy.
     /// </summary>
-    /// <typeparam name="T">
-    /// The type used to generate the proxy.
-    /// </typeparam>
+    /// <param name="type">
+    /// The type of the class.
+    /// </param>
     /// <returns>
     /// The <see cref="IProxy{TClassMetaData, TPropertyMetaData}"/>.
     /// </returns>
-    public IProxy<TClassMetaData, TPropertyMetaData> GetProxy<T>()
-      where T : class
+    public IProxy<TClassMetaData, TPropertyMetaData> GetProxy(Type type)
     {
-      var type = typeof(T);
-
       IProxy<TClassMetaData, TPropertyMetaData> value = null;
 
       if (!this._proxyCache.ContainsKey(type))
