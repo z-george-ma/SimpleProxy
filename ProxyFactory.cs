@@ -297,6 +297,9 @@ namespace SimpleProxy
     {
       var typeCtor = type.GetConstructor(new Type[0]);
 
+      if (typeCtor == null)
+        throw new ArgumentException("{0} does not have a default constructor.", type.Name);
+
       MethodBuilder createObjectBuilder = typeBuilder.DefineMethod(
         "CreateObject",
         MethodAttributes.Public | MethodAttributes.Virtual,
