@@ -67,8 +67,8 @@
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">
   </Target>
+  -->  
   <Target Name="AfterBuild">
     <Copy SourceFiles="$(OutputPath)SimpleProxy.dll" DestinationFolder="$(SolutionDir)_nuget\package\lib" ContinueOnError="true" />
   </Target>
-  -->
 </Project>
